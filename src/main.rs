@@ -18,8 +18,10 @@ fn main() {
     if let Some(req) = opt.version_requirement {
         source = filter_by_requirement(source, req);
     }
-    if opt.sort {
-        source = sort_lines(source);
+    if opt.reverse_sort {
+        source = sort_lines(source, true);
+    } else if opt.sort {
+        source = sort_lines(source, false);
     }
     print_lines(format_output(source, opt.verbose));
 }
@@ -97,6 +99,25 @@ b
                 r#"1.2.2
 1.2.3
 2.0.0
+"#,
+            ));
+    }
+
+    #[test]
+    fn test_sort_reverse() {
+        bin()
+            .arg("--sort-reverse")
+            .write_stdin(
+                r#"1.2.3
+1.2.2
+2.0.0"#,
+            )
+            .assert()
+            .success()
+            .stdout(predicates::str::diff(
+                r#"2.0.0
+1.2.3
+1.2.2
 "#,
             ));
     }

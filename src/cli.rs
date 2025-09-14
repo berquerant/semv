@@ -36,6 +36,15 @@ EOS
 v1.2.2
 v1.2.3
 v2.0.0
+// Sort semver strings (reverse)
+> semv -R <<EOS
+1.2.3
+1.2.2
+2.0.0
+EOS
+2.0.0
+1.2.3
+1.2.2
 // Filter by requirement
 > semv -r '>=1.2.0' <<EOS
 1.1.0
@@ -69,9 +78,12 @@ pub struct Cli {
     /// If not specified, the semver strings will be read from stdin.
     #[arg(value_name="TARGET", num_args=0..)]
     pub targets: Vec<String>,
-    /// Sort results.
+    /// Sort asc results.
     #[arg(short = 's', long = "sort")]
     pub sort: bool,
+    /// Sort desc results.
+    #[arg(short = 'R', long = "sort-reverse")]
+    pub reverse_sort: bool,
     /// Verbose output.
     #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,

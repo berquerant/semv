@@ -59,14 +59,13 @@ pub fn filter_by_requirement(
     }))
 }
 
-pub fn sort_lines(source: Box<StaticVersionInfoIter>) -> Box<VersionInfoIter> {
+pub fn sort_lines(source: Box<StaticVersionInfoIter>, reverse: bool) -> Box<VersionInfoIter> {
     let mut elems: Vec<_> = source.collect();
-    elems.sort_by(|a, b| match (a.version.as_ref(), b.version.as_ref()) {
-        (Some(x), Some(y)) => x.cmp(y),
-        (Some(_), _) => std::cmp::Ordering::Greater,
-        (_, Some(_)) => std::cmp::Ordering::Less,
-        _ => a.original.cmp(&b.original),
-    });
+    if reverse {
+        elems.sort_by(|a, b| b.cmp(a));
+    } else {
+        elems.sort();
+    }
     Box::new(elems.into_iter())
 }
 
@@ -111,20 +110,26 @@ mod tests {
     );
 
     macro_rules! test_sort_lines {
-        ($name:ident, $input:expr, $want:expr) => {
+        ($name:ident, $input:expr, $reverse:expr, $want:expr) => {
             #[test]
             fn $name() {
-                let got_iter = sort_lines(Box::new($input.into_iter()));
+                let got_iter = sort_lines(Box::new($input.into_iter()), $reverse);
                 let got: Vec<VersionInfo> = got_iter.collect();
                 assert_eq!($want, got);
             }
         };
     }
 
-    test_sort_lines!(test_sort_lines_empty, Vec::new(), Vec::<VersionInfo>::new());
+    test_sort_lines!(
+        test_sort_lines_empty,
+        Vec::new(),
+        false,
+        Vec::<VersionInfo>::new()
+    );
     test_sort_lines!(
         test_sort_lines_one,
         vec![VersionInfo::parse("1.2.3")],
+        false,
         vec![VersionInfo::parse("1.2.3")]
     );
     test_sort_lines!(
@@ -134,10 +139,25 @@ mod tests {
             VersionInfo::parse("0.1.2"),
             VersionInfo::parse("1.2.4")
         ],
+        false,
         vec![
             VersionInfo::parse("0.1.2"),
             VersionInfo::parse("1.2.3"),
             VersionInfo::parse("1.2.4")
+        ]
+    );
+    test_sort_lines!(
+        test_sort_lines_sort_reverse,
+        vec![
+            VersionInfo::parse("1.2.3"),
+            VersionInfo::parse("0.1.2"),
+            VersionInfo::parse("1.2.4")
+        ],
+        true,
+        vec![
+            VersionInfo::parse("1.2.4"),
+            VersionInfo::parse("1.2.3"),
+            VersionInfo::parse("0.1.2")
         ]
     );
 

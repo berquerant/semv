@@ -9,7 +9,7 @@ fn trim_prefix_v(s: &str) -> &str {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VersionInfo {
     pub original: String,
     pub version: Option<Version>,
@@ -23,6 +23,23 @@ impl VersionInfo {
         VersionInfo {
             original: s.to_string(),
             version: v,
+        }
+    }
+}
+
+impl std::cmp::PartialOrd for VersionInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::cmp::Ord for VersionInfo {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self.version.as_ref(), other.version.as_ref()) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), _) => std::cmp::Ordering::Greater,
+            (_, Some(_)) => std::cmp::Ordering::Less,
+            _ => self.original.cmp(&other.original),
         }
     }
 }

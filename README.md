@@ -12,7 +12,10 @@ Arguments:
 
 Options:
   -s, --sort
-          Sort results
+          Sort asc results
+
+  -R, --sort-reverse
+          Sort desc results
 
   -v, --verbose
           Verbose output
@@ -58,9 +61,18 @@ v1.2.3
 v1.2.2
 v2.0.0
 EOS
-1.2.2
+v1.2.2
+v1.2.3
+v2.0.0
+// Sort semver strings (reverse)
+> semv -R <<EOS
 1.2.3
+1.2.2
 2.0.0
+EOS
+2.0.0
+1.2.3
+1.2.2
 // Filter by requirement
 > semv -r '>=1.2.0' <<EOS
 1.1.0
