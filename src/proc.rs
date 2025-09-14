@@ -1,60 +1,11 @@
-use crate::ver::{is_semver, parse};
-use semver::{Version, VersionReq};
-use serde_json::json;
+use crate::ver::VersionInfo;
+use semver::VersionReq;
 use std::io::{self, BufRead};
 
 type StringIter = dyn Iterator<Item = String>;
 type StaticStringIter = dyn Iterator<Item = String> + 'static;
-type VersionIter = dyn Iterator<Item = Version>;
-
-pub fn print_lines(source: Box<StaticStringIter>) {
-    for x in source {
-        println!("{}", x);
-    }
-}
-
-pub fn filter_semver(source: Box<StaticStringIter>, invert: bool) -> Box<StringIter> {
-    if invert {
-        Box::new(source.filter(|x| !is_semver(x)))
-    } else {
-        Box::new(parse_versions(source).map(|x| x.to_string()))
-    }
-}
-
-fn parse_versions(source: Box<StaticStringIter>) -> Box<VersionIter> {
-    let it = source.filter_map(|x| parse(&x));
-    Box::new(it)
-}
-
-pub fn verbose_output(source: Box<StaticStringIter>) -> Box<StringIter> {
-    let it = parse_versions(source).map(|x| {
-        json!({
-            "original": x.to_string(),
-            "major": x.major,
-            "minor": x.minor,
-            "patch": x.patch,
-            "pre": x.pre.as_str(),
-            "build": x.build.as_str(),
-        })
-        .to_string()
-    });
-    Box::new(it)
-}
-
-pub fn filter_by_requirement(source: Box<StaticStringIter>, req: VersionReq) -> Box<StringIter> {
-    let it = parse_versions(source)
-        .filter(move |x| req.matches(x))
-        .map(|x| x.to_string());
-    Box::new(it)
-}
-
-pub fn sort_lines(source: Box<StaticStringIter>) -> Box<StringIter> {
-    let it = parse_versions(source);
-    let mut elems: Vec<_> = it.collect();
-    elems.sort();
-    let it = elems.into_iter().map(|x| x.to_string());
-    Box::new(it)
-}
+type VersionInfoIter = dyn Iterator<Item = VersionInfo>;
+type StaticVersionInfoIter = dyn Iterator<Item = VersionInfo> + 'static;
 
 pub fn read_lines(targets: Vec<String>) -> Box<StringIter> {
     if targets.is_empty() {
@@ -65,39 +16,70 @@ pub fn read_lines(targets: Vec<String>) -> Box<StringIter> {
     }
 }
 
+pub fn print_lines(source: Box<StaticStringIter>) {
+    for x in source {
+        println!("{}", x);
+    }
+}
+
+pub fn parse_versions(source: Box<StaticStringIter>) -> Box<VersionInfoIter> {
+    Box::new(source.map(|x| VersionInfo::parse(&x)))
+}
+
+pub fn filter_semver(source: Box<StaticVersionInfoIter>, invert: bool) -> Box<VersionInfoIter> {
+    Box::new(source.filter(move |x| invert != x.version.is_some()))
+}
+
+fn simple_output(source: Box<StaticVersionInfoIter>) -> Box<StringIter> {
+    Box::new(source.map(|x| x.original))
+}
+
+fn verbose_output(source: Box<StaticVersionInfoIter>) -> Box<StringIter> {
+    Box::new(source.map(|x| x.to_string()))
+}
+
+pub fn format_output(source: Box<StaticVersionInfoIter>, verbose: bool) -> Box<StringIter> {
+    if verbose {
+        verbose_output(source)
+    } else {
+        simple_output(source)
+    }
+}
+
+pub fn filter_by_requirement(
+    source: Box<StaticVersionInfoIter>,
+    req: VersionReq,
+) -> Box<VersionInfoIter> {
+    Box::new(source.filter(move |x| {
+        if let Some(v) = &x.version {
+            req.matches(v)
+        } else {
+            true
+        }
+    }))
+}
+
+pub fn sort_lines(source: Box<StaticVersionInfoIter>) -> Box<VersionInfoIter> {
+    let mut elems: Vec<_> = source.collect();
+    elems.sort_by(|a, b| match (a.version.as_ref(), b.version.as_ref()) {
+        (Some(x), Some(y)) => x.cmp(y),
+        (Some(_), _) => std::cmp::Ordering::Greater,
+        (_, Some(_)) => std::cmp::Ordering::Less,
+        _ => a.original.cmp(&b.original),
+    });
+    Box::new(elems.into_iter())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    macro_rules! test_parse_versions {
-        ($name:ident, $input:expr, $want:expr) => {
-            #[test]
-            fn $name() {
-                let got_iter = parse_versions(Box::new($input.into_iter()));
-                let got: Vec<Version> = got_iter.collect();
-                assert_eq!($want, got);
-            }
-        };
-    }
-
-    test_parse_versions!(test_parse_versions_empty, Vec::new(), Vec::<Version>::new());
-    test_parse_versions!(
-        test_parse_versions_one,
-        vec!["1.2.3".to_string()],
-        vec![Version::new(1, 2, 3)]
-    );
-    test_parse_versions!(
-        test_parse_versions_ignore_non_semver,
-        vec!["1.2.3".to_string(), "invalid".to_string()],
-        vec![Version::new(1, 2, 3)]
-    );
 
     macro_rules! test_filter_semver {
         ($name:ident, $input:expr, $invert:expr, $want:expr) => {
             #[test]
             fn $name() {
                 let got_iter = filter_semver(Box::new($input.into_iter()), $invert);
-                let got: Vec<String> = got_iter.collect();
+                let got: Vec<VersionInfo> = got_iter.collect();
                 assert_eq!($want, got);
             }
         };
@@ -107,48 +89,25 @@ mod tests {
         test_filter_semver_empty,
         Vec::new(),
         false,
-        Vec::<String>::new()
+        Vec::<VersionInfo>::new()
     );
     test_filter_semver!(
         test_filter_semver_semver_one,
-        vec!["invalid".to_string()],
+        vec![VersionInfo::parse("invalid")],
         false,
-        Vec::<String>::new()
+        Vec::<VersionInfo>::new()
     );
     test_filter_semver!(
         test_filter_semver_ignore_non_semver,
-        vec!["invalid".to_string(), "1.2.3".to_string()],
+        vec![VersionInfo::parse("invalid"), VersionInfo::parse("1.2.3")],
         false,
-        vec!["1.2.3".to_string()]
+        vec![VersionInfo::parse("1.2.3")]
     );
     test_filter_semver!(
         test_filter_semver_ignore_semver,
-        vec!["invalid".to_string(), "1.2.3".to_string()],
+        vec![VersionInfo::parse("invalid"), VersionInfo::parse("1.2.3")],
         true,
-        vec!["invalid".to_string()]
-    );
-
-    macro_rules! test_verbose_output {
-        ($name:ident, $input:expr, $want:expr) => {
-            #[test]
-            fn $name() {
-                let got_iter = verbose_output(Box::new($input.into_iter()));
-                let got: Vec<String> = got_iter.collect();
-                assert_eq!($want, got);
-            }
-        };
-    }
-
-    test_verbose_output!(test_verbose_output_empty, Vec::new(), Vec::<String>::new());
-    test_verbose_output!(
-        test_verbose_output_one,
-        vec!["1.2.3".to_string()],
-        vec![r#"{"build":"","major":1,"minor":2,"original":"1.2.3","patch":3,"pre":""}"#]
-    );
-    test_verbose_output!(
-        test_verbose_output_ignore_invalid_semver,
-        vec!["1.2.3".to_string(), "invalid".to_string()],
-        vec![r#"{"build":"","major":1,"minor":2,"original":"1.2.3","patch":3,"pre":""}"#]
+        vec![VersionInfo::parse("invalid")]
     );
 
     macro_rules! test_sort_lines {
@@ -156,29 +115,29 @@ mod tests {
             #[test]
             fn $name() {
                 let got_iter = sort_lines(Box::new($input.into_iter()));
-                let got: Vec<String> = got_iter.collect();
+                let got: Vec<VersionInfo> = got_iter.collect();
                 assert_eq!($want, got);
             }
         };
     }
 
-    test_sort_lines!(test_sort_lines_empty, Vec::new(), Vec::<String>::new());
+    test_sort_lines!(test_sort_lines_empty, Vec::new(), Vec::<VersionInfo>::new());
     test_sort_lines!(
         test_sort_lines_one,
-        vec!["1.2.3".to_string()],
-        vec!["1.2.3".to_string()]
+        vec![VersionInfo::parse("1.2.3")],
+        vec![VersionInfo::parse("1.2.3")]
     );
     test_sort_lines!(
         test_sort_lines_sort,
         vec![
-            "1.2.3".to_string(),
-            "0.1.2".to_string(),
-            "1.2.4".to_string()
+            VersionInfo::parse("1.2.3"),
+            VersionInfo::parse("0.1.2"),
+            VersionInfo::parse("1.2.4")
         ],
         vec![
-            "0.1.2".to_string(),
-            "1.2.3".to_string(),
-            "1.2.4".to_string()
+            VersionInfo::parse("0.1.2"),
+            VersionInfo::parse("1.2.3"),
+            VersionInfo::parse("1.2.4")
         ]
     );
 
@@ -187,7 +146,7 @@ mod tests {
             #[test]
             fn $name() {
                 let got_iter = filter_by_requirement(Box::new($source.into_iter()), $req);
-                let got: Vec<String> = got_iter.collect();
+                let got: Vec<VersionInfo> = got_iter.collect();
                 assert_eq!($want, got);
             }
         };
@@ -197,18 +156,18 @@ mod tests {
         test_filter_by_requirement_empty,
         Vec::new(),
         VersionReq::parse(">=1.2.3, <1.8.0").unwrap(),
-        Vec::<String>::new()
+        Vec::<VersionInfo>::new()
     );
     test_filter_by_requirement!(
         test_filter_by_requirement_pass,
-        vec!["1.2.3".to_string()],
+        vec![VersionInfo::parse("1.2.3")],
         VersionReq::parse(">=1.2.3, <1.8.0").unwrap(),
-        vec!["1.2.3".to_string()]
+        vec![VersionInfo::parse("1.2.3")]
     );
     test_filter_by_requirement!(
         test_filter_by_requirement_partial_deny,
-        vec!["1.2.2".to_string(), "1.2.3".to_string()],
+        vec![VersionInfo::parse("1.2.2"), VersionInfo::parse("1.2.3")],
         VersionReq::parse(">=1.2.3, <1.8.0").unwrap(),
-        vec!["1.2.3".to_string()]
+        vec![VersionInfo::parse("1.2.3")]
     );
 }

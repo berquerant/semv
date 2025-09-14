@@ -4,28 +4,24 @@ mod ver;
 
 use crate::cli::Cli;
 use crate::proc::{
-    filter_by_requirement, filter_semver, print_lines, read_lines, sort_lines, verbose_output,
+    filter_by_requirement, filter_semver, format_output, parse_versions, print_lines, read_lines,
+    sort_lines,
 };
 use clap::Parser;
 
 fn main() {
     let opt = Cli::parse();
-    let mut source = read_lines(opt.targets);
-    source = filter_semver(source, opt.filter_non_semver);
-
-    if !opt.filter_non_semver {
-        if let Some(req) = opt.version_requirement {
-            source = filter_by_requirement(source, req);
-        }
-        if opt.sort {
-            source = sort_lines(source);
-        }
-        if opt.verbose {
-            source = verbose_output(source);
-        }
+    let mut source = filter_semver(
+        parse_versions(read_lines(opt.targets)),
+        opt.filter_non_semver,
+    );
+    if let Some(req) = opt.version_requirement {
+        source = filter_by_requirement(source, req);
     }
-
-    print_lines(source);
+    if opt.sort {
+        source = sort_lines(source);
+    }
+    print_lines(format_output(source, opt.verbose));
 }
 
 #[cfg(test)]
@@ -80,7 +76,7 @@ b
             .assert()
             .success()
             .stdout(predicates::str::diff(
-                r#"0.1.2
+                r#"v0.1.2
 1.2.3-alpha.1
 "#,
             ));
@@ -117,9 +113,9 @@ v2.0.0"#,
             .assert()
             .success()
             .stdout(predicates::str::diff(
-                r#"1.2.2
-1.2.3
-2.0.0
+                r#"v1.2.2
+v1.2.3
+v2.0.0
 "#,
             ));
     }
