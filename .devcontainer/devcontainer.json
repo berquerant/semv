@@ -1,0 +1,7 @@
+{
+  "name": "Rust dev container",
+  "build": {
+    "dockerfile": "./Dockerfile",
+    "context": ".."
+  }
+}
