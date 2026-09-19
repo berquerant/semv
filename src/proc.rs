@@ -69,7 +69,30 @@ pub fn sort_lines(source: Box<StaticVersionInfoIter>, reverse: bool) -> Box<Vers
     Box::new(elems.into_iter())
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ProcessOptions {
+    pub sort: bool,
+    pub reverse_sort: bool,
+    pub filter_non_semver: bool,
+    pub requirement: Option<VersionReq>,
+    pub verbose: bool,
+}
+
+pub fn process_versions(source: Box<StaticStringIter>, options: ProcessOptions) -> Box<StringIter> {
+    let mut stream = filter_semver(parse_versions(source), options.filter_non_semver);
+    if let Some(req) = options.requirement {
+        stream = filter_by_requirement(stream, req);
+    }
+    if options.reverse_sort {
+        stream = sort_lines(stream, true);
+    } else if options.sort {
+        stream = sort_lines(stream, false);
+    }
+    format_output(stream, options.verbose)
+}
+
 #[cfg(test)]
+
 mod tests {
     use super::*;
 

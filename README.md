@@ -26,7 +26,11 @@ Options:
   -z, --nonsemver
           Display non-semver strings only
 
+      --mcp
+          Run as MCP (Model Context Protocol) server
+
   -h, --help
+
           Print help (see a summary with '-h')
 
   -V, --version
@@ -101,3 +105,19 @@ EOS
 {"build":"","major":2,"minor":1,"original":"2.1.3","patch":3,"pre":""}
 {"build":"","major":3,"minor":0,"original":"3.0.0","patch":0,"pre":""}
 ```
+
+## MCP Server
+
+Add to your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "semv": {
+      "command": "semv",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+

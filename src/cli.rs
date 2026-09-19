@@ -93,4 +93,7 @@ pub struct Cli {
     /// Display non-semver strings only.
     #[arg(short = 'z', long = "nonsemver")]
     pub filter_non_semver: bool,
+    /// Run as MCP (Model Context Protocol) server.
+    #[arg(long = "mcp")]
+    pub mcp: bool,
 }
