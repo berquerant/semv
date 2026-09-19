@@ -1,7 +1,5 @@
-use crate::proc::{
-    filter_by_requirement, filter_semver, format_output, parse_versions, sort_lines,
-};
-use crate::ver::VersionInfo;
+use crate::proc::{ProcessOptions, process_versions};
+use crate::ver::{ParsedSemver, VersionInfo};
 use rmcp::{
     ServiceExt,
     handler::server::wrapper::Parameters,
@@ -11,7 +9,7 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use semver::VersionReq;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Clone, Default)]
 pub struct SemvMcpServer;
@@ -38,17 +36,6 @@ pub struct ParseSemverParams {
     pub target: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ParsedSemver {
-    pub original: String,
-    pub is_valid: bool,
-    pub major: Option<u64>,
-    pub minor: Option<u64>,
-    pub patch: Option<u64>,
-    pub pre: Option<String>,
-    pub build: Option<String>,
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct MatchRequirementParams {
     /// The version string to check.
@@ -68,29 +55,26 @@ impl SemvMcpServer {
         &self,
         Parameters(params): Parameters<SemvParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let filter_non_semver = params.nonsemver.unwrap_or(false);
-        let mut source = filter_semver(
-            parse_versions(Box::new(params.targets.into_iter())),
-            filter_non_semver,
-        );
-
-        if let Some(req_str) = params.requirement {
-            let req = VersionReq::parse(&req_str).map_err(|e| {
+        let req = if let Some(req_str) = params.requirement {
+            Some(VersionReq::parse(&req_str).map_err(|e| {
                 ErrorData::invalid_params(
                     format!("Invalid version requirement '{}': {}", req_str, e),
                     None,
                 )
-            })?;
-            source = filter_by_requirement(source, req);
-        }
+            })?)
+        } else {
+            None
+        };
 
-        if params.reverse_sort.unwrap_or(false) {
-            source = sort_lines(source, true);
-        } else if params.sort.unwrap_or(false) {
-            source = sort_lines(source, false);
-        }
+        let options = ProcessOptions {
+            sort: params.sort.unwrap_or(false),
+            reverse_sort: params.reverse_sort.unwrap_or(false),
+            filter_non_semver: params.nonsemver.unwrap_or(false),
+            requirement: req,
+            verbose: params.verbose.unwrap_or(false),
+        };
 
-        let output_iter = format_output(source, params.verbose.unwrap_or(false));
+        let output_iter = process_versions(Box::new(params.targets.into_iter()), options);
         let results: Vec<String> = output_iter.collect();
         let content_text = results.join("\n");
         Ok(CallToolResult::success(vec![ContentBlock::text(
@@ -108,36 +92,7 @@ impl SemvMcpServer {
         Parameters(params): Parameters<ParseSemverParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let info = VersionInfo::parse(&params.target);
-        let parsed = if let Some(v) = info.version {
-            ParsedSemver {
-                original: info.original,
-                is_valid: true,
-                major: Some(v.major),
-                minor: Some(v.minor),
-                patch: Some(v.patch),
-                pre: if v.pre.is_empty() {
-                    None
-                } else {
-                    Some(v.pre.as_str().to_string())
-                },
-                build: if v.build.is_empty() {
-                    None
-                } else {
-                    Some(v.build.as_str().to_string())
-                },
-            }
-        } else {
-            ParsedSemver {
-                original: info.original,
-                is_valid: false,
-                major: None,
-                minor: None,
-                patch: None,
-                pre: None,
-                build: None,
-            }
-        };
-
+        let parsed = ParsedSemver::from(&info);
         let json_str = serde_json::to_string(&parsed).map_err(|e| {
             ErrorData::internal_error(format!("Failed to serialize result: {}", e), None)
         })?;

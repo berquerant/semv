@@ -1,4 +1,6 @@
+use schemars::JsonSchema;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 fn trim_prefix_v(s: &str) -> &str {
@@ -23,6 +25,51 @@ impl VersionInfo {
         VersionInfo {
             original: s.to_string(),
             version: v,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ParsedSemver {
+    pub original: String,
+    pub is_valid: bool,
+    pub major: Option<u64>,
+    pub minor: Option<u64>,
+    pub patch: Option<u64>,
+    pub pre: Option<String>,
+    pub build: Option<String>,
+}
+
+impl From<&VersionInfo> for ParsedSemver {
+    fn from(info: &VersionInfo) -> Self {
+        if let Some(v) = &info.version {
+            ParsedSemver {
+                original: info.original.clone(),
+                is_valid: true,
+                major: Some(v.major),
+                minor: Some(v.minor),
+                patch: Some(v.patch),
+                pre: if v.pre.is_empty() {
+                    None
+                } else {
+                    Some(v.pre.as_str().to_string())
+                },
+                build: if v.build.is_empty() {
+                    None
+                } else {
+                    Some(v.build.as_str().to_string())
+                },
+            }
+        } else {
+            ParsedSemver {
+                original: info.original.clone(),
+                is_valid: false,
+                major: None,
+                minor: None,
+                patch: None,
+                pre: None,
+                build: None,
+            }
         }
     }
 }
@@ -105,4 +152,26 @@ mod tests {
             version: Some(Version::new(1, 2, 3)),
         }
     );
+
+    #[test]
+    fn test_parsed_semver_from_valid() {
+        let info = VersionInfo::parse("v1.2.3-alpha.1+dev");
+        let parsed = ParsedSemver::from(&info);
+        assert!(parsed.is_valid);
+        assert_eq!(parsed.original, "v1.2.3-alpha.1+dev");
+        assert_eq!(parsed.major, Some(1));
+        assert_eq!(parsed.minor, Some(2));
+        assert_eq!(parsed.patch, Some(3));
+        assert_eq!(parsed.pre, Some("alpha.1".to_string()));
+        assert_eq!(parsed.build, Some("dev".to_string()));
+    }
+
+    #[test]
+    fn test_parsed_semver_from_invalid() {
+        let info = VersionInfo::parse("not-semver");
+        let parsed = ParsedSemver::from(&info);
+        assert!(!parsed.is_valid);
+        assert_eq!(parsed.original, "not-semver");
+        assert_eq!(parsed.major, None);
+    }
 }

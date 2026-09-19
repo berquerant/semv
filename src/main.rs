@@ -4,10 +4,7 @@ mod proc;
 mod ver;
 
 use crate::cli::Cli;
-use crate::proc::{
-    filter_by_requirement, filter_semver, format_output, parse_versions, print_lines, read_lines,
-    sort_lines,
-};
+use crate::proc::{ProcessOptions, print_lines, process_versions, read_lines};
 use clap::Parser;
 
 #[tokio::main]
@@ -17,19 +14,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return mcp::run_mcp_server().await;
     }
 
-    let mut source = filter_semver(
-        parse_versions(read_lines(opt.targets)),
-        opt.filter_non_semver,
-    );
-    if let Some(req) = opt.version_requirement {
-        source = filter_by_requirement(source, req);
-    }
-    if opt.reverse_sort {
-        source = sort_lines(source, true);
-    } else if opt.sort {
-        source = sort_lines(source, false);
-    }
-    print_lines(format_output(source, opt.verbose));
+    let options = ProcessOptions {
+        sort: opt.sort,
+        reverse_sort: opt.reverse_sort,
+        filter_non_semver: opt.filter_non_semver,
+        requirement: opt.version_requirement,
+        verbose: opt.verbose,
+    };
+    print_lines(process_versions(read_lines(opt.targets), options));
     Ok(())
 }
 
