@@ -1,4 +1,5 @@
 mod cli;
+mod mcp;
 mod proc;
 mod ver;
 
@@ -9,8 +10,13 @@ use crate::proc::{
 };
 use clap::Parser;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let opt = Cli::parse();
+    if opt.mcp {
+        return mcp::run_mcp_server().await;
+    }
+
     let mut source = filter_semver(
         parse_versions(read_lines(opt.targets)),
         opt.filter_non_semver,
@@ -24,6 +30,7 @@ fn main() {
         source = sort_lines(source, false);
     }
     print_lines(format_output(source, opt.verbose));
+    Ok(())
 }
 
 #[cfg(test)]
@@ -37,6 +44,15 @@ mod tests {
     #[test]
     fn test_help() {
         bin().arg("--help").assert().success();
+    }
+
+    #[test]
+    fn test_help_includes_mcp() {
+        bin()
+            .arg("--help")
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("--mcp"));
     }
 
     #[test]
